@@ -1,0 +1,11 @@
+# Text-to-Music Generator Requirements
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+audiocraft>=1.3.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Optional: For CUDA support (uncomment if using GPU)
+# torch==2.0.0+cu121
+# torchaudio==2.0.0+cu121
