@@ -42,7 +42,7 @@
 ## Implementation Plan
 
 ### Step 1: Fix `/app/api/generate-music/route.ts`
-Replace the current implementation with a proper Python script execution:
+Replace the current implementation with a proper Python script execution that handles concurrent requests safely:
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
@@ -50,10 +50,16 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 const execAsync = promisify(exec);
 
 export async function POST(request: NextRequest) {
+  // Generate unique identifier for this request to prevent race conditions
+  const requestId = randomUUID();
+  const promptsFile = path.join(process.cwd(), `temp_prompts_${requestId}.txt`);
+  const outputDir = path.join(process.cwd(), `output_${requestId}`);
+
   try {
     const { prompt, duration = 30 } = await request.json();
 
@@ -67,28 +73,24 @@ export async function POST(request: NextRequest) {
     // Sanitize prompt (TypeScript equivalent of Python code)
     const safePrompt = prompt.replace(/[^a-zA-Z0-9 .-]/g, '').trim().substring(0, 100);
 
-    // Create temporary prompts file
-    const promptsFile = path.join(process.cwd(), 'temp_prompts.txt');
+    // Create temporary prompts file with unique name
     fs.writeFileSync(promptsFile, safePrompt);
 
-    // Create output directory
-    const outputDir = path.join(process.cwd(), 'output');
+    // Create unique output directory for this request
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Execute Python script with timeout
+    // Execute Python script with timeout (execAsync handles timeout internally)
     const pythonScript = path.join(process.cwd(), 'generate_music.py');
     const command = `python "${pythonScript}" --prompts "${promptsFile}" --output "${outputDir}" --duration ${duration}`;
 
-    const { stdout, stderr } = await Promise.race([
-      execAsync(command, { timeout: 300000 }), // 5 minute timeout
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 300000)
-      )
-    ]) as { stdout: string; stderr: string };
+    const { stdout, stderr } = await execAsync(command, {
+      timeout: 300000, // 5 minutes
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
 
-    // Find generated file
+    // Find generated file in the unique output directory
     const files = fs.readdirSync(outputDir);
     const generatedFile = files.find(f => f.endsWith('.wav'));
 
