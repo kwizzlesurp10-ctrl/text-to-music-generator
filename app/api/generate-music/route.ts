@@ -111,13 +111,14 @@ export async function POST(request: NextRequest) {
         'Cache-Control': 'no-cache',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Music generation error:', error);
     
     // Determine error message
-    const errorMessage = error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM'
+    const errorMessage = (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ETIMEDOUT') || 
+                         (error instanceof Error && (error as NodeJS.ErrnoException).signal === 'SIGTERM')
       ? 'Music generation timed out after 5 minutes'
-      : error.message || 'Unknown error';
+      : error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(
       { 
