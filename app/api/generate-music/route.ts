@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function POST(request: NextRequest) {
   // Generate unique identifier for this request to prevent race conditions
@@ -20,6 +20,21 @@ export async function POST(request: NextRequest) {
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json(
         { error: 'Prompt is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate duration parameter to prevent command injection
+    // Ensure duration is a positive integer between 5 and 300 seconds
+    const durationNum = typeof duration === 'number' ? duration : parseInt(String(duration), 10);
+    if (
+      isNaN(durationNum) ||
+      !Number.isInteger(durationNum) ||
+      durationNum < 5 ||
+      durationNum > 300
+    ) {
+      return NextResponse.json(
+        { error: 'Duration must be an integer between 5 and 300 seconds' },
         { status: 400 }
       );
     }
@@ -53,13 +68,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const command = `python "${pythonScript}" --prompts "${promptsFile}" --output "${outputDir}" --duration ${duration}`;
-
-    // Execute with 5 minute timeout (execAsync handles timeout internally)
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: 300000, // 5 minutes
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-    });
+    // Use execFile instead of exec to prevent shell injection
+    // Arguments are passed as an array, preventing shell interpretation
+    const { stdout, stderr } = await execFileAsync(
+      'python',
+      [
+        pythonScript,
+        '--prompts', promptsFile,
+        '--output', outputDir,
+        '--duration', String(durationNum)
+      ],
+      {
+        timeout: 300000, // 5 minutes
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      }
+    );
 
     // Find generated file in the unique output directory
     const files = fs.readdirSync(outputDir);

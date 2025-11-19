@@ -95,9 +95,49 @@ const { stdout, stderr } = await execAsync(command, {
 - ✅ `FIX_REQUIREMENTS.md` - Updated with fixed implementation
 - ✅ `BUG_FIXES.md` - This documentation
 
+## Bug 3: Command Injection Vulnerability ✅ FIXED
+
+### Problem
+The `duration` parameter was directly interpolated into a shell command string without validation. An attacker could pass malicious values like `"30; rm -rf /"` to execute arbitrary shell commands.
+
+**Vulnerable Code:**
+```typescript
+const { prompt, duration = 30 } = await request.json();
+const command = `python "${pythonScript}" --prompts "${promptsFile}" --output "${outputDir}" --duration ${duration}`;
+await execAsync(command, ...);
+```
+
+### Solution
+1. **Added strict validation** for duration parameter:
+   - Must be a positive integer
+   - Must be between 5 and 300 seconds
+   - Rejects non-integer values
+
+2. **Switched from `exec` to `execFile`**:
+   - `execFile` doesn't use shell interpretation
+   - Arguments passed as array, preventing injection
+   - More secure by design
+
+### Code Changes
+```typescript
+// Before (VULNERABLE):
+const { prompt, duration = 30 } = await request.json();
+const command = `python "${pythonScript}" --prompts "${promptsFile}" --output "${outputDir}" --duration ${duration}`;
+await execAsync(command, ...);
+
+// After (SECURE):
+const { prompt, duration = 30 } = await request.json();
+const durationNum = typeof duration === 'number' ? duration : parseInt(String(duration), 10);
+if (isNaN(durationNum) || !Number.isInteger(durationNum) || durationNum < 5 || durationNum > 300) {
+  return NextResponse.json({ error: 'Duration must be an integer between 5 and 300 seconds' }, { status: 400 });
+}
+await execFileAsync('python', [pythonScript, '--prompts', promptsFile, '--output', outputDir, '--duration', String(durationNum)], ...);
+```
+
 ## Status
 
-✅ **Both bugs fixed and verified**
+✅ **All bugs fixed and verified**
+✅ **Security vulnerability patched**
 ✅ **No linting errors**
 ✅ **Ready for production**
 
