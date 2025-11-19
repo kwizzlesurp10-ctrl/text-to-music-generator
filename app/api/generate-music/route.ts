@@ -7,6 +7,16 @@ import { randomUUID } from 'crypto';
 
 const execFileAsync = promisify(execFile);
 
+// Health check endpoint
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
+    endpoint: '/api/generate-music',
+    method: 'POST',
+    message: 'This endpoint accepts POST requests with { prompt: string, duration?: number }'
+  });
+}
+
 export async function POST(request: NextRequest) {
   // Generate unique identifier for this request to prevent race conditions
   const requestId = randomUUID();
@@ -63,15 +73,35 @@ export async function POST(request: NextRequest) {
     // Check if Python script exists
     if (!fs.existsSync(pythonScript)) {
       return NextResponse.json(
-        { error: 'Music generation script not found' },
+        { error: 'Music generation script not found', path: pythonScript },
         { status: 500 }
       );
+    }
+
+    // Detect Python command (try python3 first, then python)
+    let pythonCommand = 'python3';
+    try {
+      await execFileAsync('python3', ['--version'], { timeout: 5000 });
+    } catch {
+      try {
+        await execFileAsync('python', ['--version'], { timeout: 5000 });
+        pythonCommand = 'python';
+      } catch {
+        return NextResponse.json(
+          { 
+            error: 'Python not found', 
+            details: 'Please ensure Python 3.8+ is installed and available in PATH',
+            suggestion: 'Try: python3 --version or python --version'
+          },
+          { status: 500 }
+        );
+      }
     }
 
     // Use execFile instead of exec to prevent shell injection
     // Arguments are passed as an array, preventing shell interpretation
     const { stdout, stderr } = await execFileAsync(
-      'python',
+      pythonCommand,
       [
         pythonScript,
         '--prompts', promptsFile,
